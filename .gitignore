@@ -1,0 +1,27 @@
+# xv6-ARM Operating System .gitignore
+
+.vscode/
+
+# Build artifacts (from Makefile clean target)
+build/
+*.o
+*.d
+*.asm
+*.sym
+vectors.S
+bootblock
+entryother
+initcode
+initcode.out
+kernel
+xv6.img
+fs.img
+kernel.elf
+memfs
+
+# Tool binaries
+tools/mkfs
+
+# User program binaries (generated in usr/)
+usr/_*
+usr/*.o
