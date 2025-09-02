@@ -59,26 +59,26 @@ int sys_sbrk(void)
 int sys_sleep(void)
 {
     int n;
-    uint ticks0;
+    // uint ticks0;
 
     if(argint(0, &n) < 0) {
         return -1;
     }
 
-    acquire(&tickslock);
+    // acquire(&tickslock);
 
-    ticks0 = ticks;
+    // ticks0 = ticks;
+    // while(ticks - ticks0 < n){
+    //     if(proc->killed){
+    //         release(&tickslock);
+    //         return -1;
+    //     }
 
-    while(ticks - ticks0 < n){
-        if(proc->killed){
-            release(&tickslock);
-            return -1;
-        }
+    //     sleep(&ticks, &tickslock);
+    // }
 
-        sleep(&ticks, &tickslock);
-    }
-
-    release(&tickslock);
+    // release(&tickslock);
+    sleep_ticks(n);
     return 0;
 }
 

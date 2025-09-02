@@ -6,6 +6,8 @@
 #include "defs.h"
 #include "memlayout.h"
 #include "spinlock.h"
+#include "proc.h"
+#include "lottery_assets.h"
 
 // A SP804 has two timers, we only use the first one, and as perodic timer
 
@@ -53,6 +55,8 @@ void isr_timer (struct trapframe *tp, int irq_idx)
 {
     acquire(&tickslock);
     ticks++;
+    update_sleeping_processes_wrapper();
+    update_boosted_tickets_timer();
     wakeup(&ticks);
     release(&tickslock);
     ack_timer();

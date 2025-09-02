@@ -136,6 +136,8 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+uint            srand(void);
+void            sleep_ticks(int sleep_ticks); // custom sleep function
 
 // swtch.S
 void            swtch(struct context**, struct context*);

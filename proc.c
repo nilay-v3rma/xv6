@@ -6,6 +6,7 @@
 #include "arm.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "lottery_assets.h"
 
 //
 // Process initialization:
@@ -37,6 +38,13 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+
+#define RAND_MAX 0x7fffffff
+uint rseed = 0;
+
+uint srand() {
+    return rseed = (rseed * 1103515245 + 12345) & RAND_MAX;
+}
 
 void pinit(void)
 {
@@ -101,6 +109,13 @@ static struct proc* allocproc(void)
     // (if and when necessary). We need to skip that instruction and let
     // it use our implementation.
     p->context->lr = (uint)forkret+4;
+
+    // Initialize lottery scheduling fields
+    p->base_tickets = 1;  // Default base tickets
+    p->tickets = 1;       // Current tickets
+    p->boost_ticks = 0;   // No boost initially
+    p->sleep_start = 0;
+    p->sleep_duration = 0;
 
     return p;
 }
@@ -321,34 +336,66 @@ int wait(void)
 void scheduler(void)
 {
     struct proc *p;
-
+    int total_tickets = 0;
     for(;;){
         // Enable interrupts on this processor.
         sti();
 
-        // Loop over process table looking for process to run.
-        acquire(&ptable.lock);
+        // // Loop over process table looking for process to run.
+        // acquire(&ptable.lock);
 
-        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-            if(p->state != RUNNABLE) {
-                continue;
+        // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        //     if(p->state != RUNNABLE) {
+        //         continue;
+        //     }
+
+        //     // Switch to chosen process.  It is the process's job
+        //     // to release ptable.lock and then reacquire it
+        //     // before jumping back to us.
+        //     proc = p;
+        //     switchuvm(p);
+
+        //     p->state = RUNNING;
+
+        //     swtch(&cpu->scheduler, proc->context);
+        //     // Process is done running for now.
+        //     // It should have changed its p->state before coming back.
+        //     proc = 0;
+        // }
+
+        // release(&ptable.lock);
+
+        // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        //     if(p->state == RUNNABLE) {
+        //         total_tickets += p->tickets;
+        //     }
+        // }
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+            if(p->state == RUNNABLE) {
+                total_tickets += p->tickets;
             }
-
-            // Switch to chosen process.  It is the process's job
-            // to release ptable.lock and then reacquire it
-            // before jumping back to us.
-            proc = p;
-            switchuvm(p);
-
-            p->state = RUNNING;
-
-            swtch(&cpu->scheduler, proc->context);
-            // Process is done running for now.
-            // It should have changed its p->state before coming back.
-            proc = 0;
         }
+        if(total_tickets > 0){
+            p = hold_lottery(total_tickets, ptable.proc);
+            if(p) {
+                acquire(&ptable.lock);
+                if(p->state == RUNNABLE) {
+                    // Switch to chosen process.  It is the process's job
+                    // to release ptable.lock and then reacquire it
+                    // before jumping back to us.
+                    proc = p;
+                    switchuvm(p);
 
-        release(&ptable.lock);
+                    p->state = RUNNING;
+
+                    swtch(&cpu->scheduler, proc->context);
+                    // Process is done running for now.
+                    // It should have changed its p->state before coming back.
+                    proc = 0;
+                }
+                release(&ptable.lock);
+            }
+        }
     }
 }
 
@@ -448,12 +495,24 @@ void sleep(void *chan, struct spinlock *lk)
     }
 }
 
+// Enhanced sleep function that uses tick-based sleeping
+void sleep_ticks(int sleep_ticks) {
+    cprintf("Process %d sleeping for %d ticks\n", proc->pid, sleep_ticks);
+    acquire(&ptable.lock);
+    
+    proc->sleep_start = ticks;
+    proc->sleep_duration = sleep_ticks;
+    proc->state = SLEEPING;
+    cprintf("Process %d set to SLEEPING state\n", proc->pid);
+    sched();
+    release(&ptable.lock);
+}
+
 //PAGEBREAK!
 // Wake up all processes sleeping on chan. The ptable lock must be held.
 static void wakeup1(void *chan)
 {
     struct proc *p;
-
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
         if(p->state == SLEEPING && p->chan == chan) {
             p->state = RUNNABLE;

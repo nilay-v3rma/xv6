@@ -18,6 +18,7 @@ OBJS = \
 	file.o\
 	fs.o\
 	log.o\
+	lottery_assets.o\
 	main.o\
 	memide.o\
 	pipe.o\
