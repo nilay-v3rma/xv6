@@ -13,13 +13,11 @@ extern struct {
 
 struct proc *hold_lottery(int total_tickets, struct proc *proc_table){
     int winning_ticket = srand() % total_tickets;
-    int current_count = 0;
     struct proc *p;
 
     for(p = proc_table; p < &proc_table[NPROC]; p++) {
         if(p->state == RUNNABLE) {
-            current_count += p->tickets;
-            if(current_count > winning_ticket) {
+            if(p->tickets >= winning_ticket) {
                 return p;
             }
         }
