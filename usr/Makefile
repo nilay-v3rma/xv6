@@ -22,6 +22,7 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
+	_lotterytest\
 
 
 all: $(FS_IMAGE)

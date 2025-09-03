@@ -43,6 +43,10 @@ static void wakeup1(void *chan);
 uint rseed = 0;
 
 uint srand() {
+    // Better seeding using ticks for some randomness
+    if(rseed == 0) {
+        rseed = ticks;
+    }
     return rseed = (rseed * 1103515245 + 12345) & RAND_MAX;
 }
 
@@ -213,6 +217,12 @@ int fork(void)
     np->parent = proc;
     *np->tf = *proc->tf;
 
+    np->base_tickets = proc->base_tickets;
+    np->tickets = np->base_tickets;
+    np->boost_ticks = 0;  // No boost for new process
+    np->sleep_start = 0;
+    np->sleep_duration = 0;
+
     // Clear r0 so that fork returns 0 in the child.
     np->tf->r0 = 0;
 
@@ -370,34 +380,35 @@ void scheduler(void)
         //         total_tickets += p->tickets;
         //     }
         // }
+        acquire(&ptable.lock);
         for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
             if(p->state == RUNNABLE) {
                 total_tickets += p->tickets;
             }
         }
-        if(total_tickets > 0){
+        
+        if(total_tickets > 0) {
             p = hold_lottery(total_tickets, ptable.proc);
-            if(p) {
-                acquire(&ptable.lock);
-                if(p->state == RUNNABLE) {
-                    // Switch to chosen process.  It is the process's job
-                    // to release ptable.lock and then reacquire it
-                    // before jumping back to us.
-                    proc = p;
-                    switchuvm(p);
+            if(p && p->state == RUNNABLE) {
+                // Switch to chosen process.  It is the process's job
+                // to release ptable.lock and then reacquire it
+                // before jumping back to us.
+                proc = p;
+                switchuvm(p);
 
-                    p->state = RUNNING;
+                p->state = RUNNING;
 
-                    swtch(&cpu->scheduler, proc->context);
-                    // Process is done running for now.
-                    // It should have changed its p->state before coming back.
-                    proc = 0;
-                }
-                release(&ptable.lock);
+                swtch(&cpu->scheduler, proc->context);
+                // Process is done running for now.
+                // It should have changed its p->state before coming back.
+                proc = 0;
             }
         }
-    }
+        
+        release(&ptable.lock);
+        }
 }
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state.
@@ -497,13 +508,13 @@ void sleep(void *chan, struct spinlock *lk)
 
 // Enhanced sleep function that uses tick-based sleeping
 void sleep_ticks(int sleep_ticks) {
-    cprintf("Process %d sleeping for %d ticks\n", proc->pid, sleep_ticks);
+    // cprintf("Process %d sleeping for %d ticks\n", proc->pid, sleep_ticks);
     acquire(&ptable.lock);
     
     proc->sleep_start = ticks;
     proc->sleep_duration = sleep_ticks;
     proc->state = SLEEPING;
-    cprintf("Process %d set to SLEEPING state\n", proc->pid);
+    // cprintf("Process %d set to SLEEPING state\n", proc->pid);
     sched();
     release(&ptable.lock);
 }

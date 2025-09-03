@@ -5,6 +5,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "lottery_assets.h"
 
 int sys_fork(void)
 {
@@ -93,4 +94,19 @@ int sys_uptime(void)
     release(&tickslock);
 
     return xticks;
+}
+
+int sys_settickets(void)
+{
+    int pid, tickets;
+    
+    if(argint(0, &pid) < 0 || argint(1, &tickets) < 0) {
+        return -1;
+    }
+    
+    if(tickets <= 0) {
+        return -1;
+    }
+    
+    return settickets(pid, tickets);
 }
