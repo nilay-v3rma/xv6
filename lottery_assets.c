@@ -81,11 +81,6 @@ void update_sleeping_processes_wrapper(void) {
 int settickets(int pid, int tickets) {
     struct proc *p;
     
-    // cprintf("-------------settickets called: pid=%d, tickets=%d\n", pid, tickets);  // Debug output
-    if(tickets <= 0) {
-        // cprintf("-------------Invalid ticket count: %d\n", tickets);  // Debug output
-        return -1;
-    }
     acquire(&ptable.lock);
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
         if(p->pid == pid) {
