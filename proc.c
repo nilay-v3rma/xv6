@@ -364,7 +364,7 @@ void boost_processes() {
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
         if(p->state == SLEEPING) {
             p->boost_ticks++;
-        } else if(p->state == RUNNABLE || p->state == RUNNING) {
+        } else if((p->state == RUNNABLE || p->state == RUNNING) && p->boost_ticks > 0) {
             p->boost_ticks--;
         }
 
@@ -419,6 +419,7 @@ void scheduler(void)
             // to release ptable.lock and then reacquire it
             // before jumping back to us.
             proc = p;
+            cprintf("%d \n", proc->pid);
             switchuvm(p);
 
             p->state = RUNNING;
@@ -455,7 +456,6 @@ void sched(void)
     if(int_enabled ()) {
         panic("sched interruptible");
     }
-
     intena = cpu->intena;
     swtch(&proc->context, cpu->scheduler);
     cpu->intena = intena;
@@ -661,14 +661,13 @@ int getpinfo(struct pstat *ps)
         if(p->state != UNUSED) {
             ps->inuse[i] = 1;
             ps->pid[i] = p->pid;
-            ps->tickets[i] = p->base_tickets;
-            ps->runticks[i] = ticks - p->sleep_start; // Use kernel ticks variable
+            ps->base_tickets[i] = p->base_tickets;
+            // ps->[i] = ticks - (p->sleep_start + p->sleep_duration); // Use kernel ticks variable
             ps->boostsleft[i] = p->boost_ticks;
         } else {
             ps->inuse[i] = 0;
             ps->pid[i] = 0;
-            ps->tickets[i] = 0;
-            ps->runticks[i] = 0;
+            ps->base_tickets[i] = 0;
             ps->boostsleft[i] = 0;
         }
     }

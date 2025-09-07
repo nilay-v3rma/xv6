@@ -6,8 +6,7 @@
 struct pstat {
     int inuse[NPROC];       // whether this slot of the process table is in use (1 or 0)
     int pid[NPROC];         // PID of each process
-    int tickets[NPROC];     // number of tickets of each process
-    int runticks[NPROC];    // number of ticks each process has run
+    int base_tickets[NPROC];     // number of tickets of each process
     int boostsleft[NPROC];  // number of boosts left for each process
 };
 
