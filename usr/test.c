@@ -160,9 +160,7 @@ void test_fair() {
         printf(1, "Child1 (1 ticket): completed work \n");
         exit();
     }
-    
-    // sleep(FORK_DELAY); // Small delay between forks
-    
+        
     int child2_pid = fork();
     if (child2_pid == 0) {
         // Child 2: 4 tickets
@@ -172,7 +170,7 @@ void test_fair() {
         printf(1, "Child2 starting CPU work...\n");
         cpu_intensive_work2(TEST_DURATION_TICKS);
         
-        printf(1, "Child2 (10 tickets): completed work \n");
+        printf(1, "Child2 (4 tickets): completed work \n");
         exit();
     }
     
@@ -180,7 +178,7 @@ void test_fair() {
     wait();
     wait();
     
-    printf(1, "Expected fairness: process with 4 tickets should get more CPU time than process with 1 ticket.\n");
+    printf(1, "Expected fairness: process with 4 tickets should get more CPU time than process with 1 ticket (when competing).\n");
 }
 
 // Test 4: Basic boost test
@@ -371,13 +369,13 @@ int main(int argc, char *argv[]) {
     // No need for random seed since we removed srand
     
     // Run all tests
-    // test_inheritance();
-    // test_sleep_clean();
+    test_inheritance();
+    test_sleep_clean();
     test_fair();
-    // test_boost_basic();
-    // test_boost_accumulate();
-    // test_multi_sleepers();
-    // test_boost_and_semantics();
+    test_boost_basic();
+    test_boost_accumulate();
+    test_multi_sleepers();
+    test_boost_and_semantics();
     
     printf(1, "\n=== Test Suite Complete ===\n");
     printf(1, "Review output above for PASS/FAIL results\n");
