@@ -54,6 +54,7 @@ void isr_timer (struct trapframe *tp, int irq_idx)
     acquire(&tickslock);
     ticks++;
     wakeup(&ticks);
+    boost_processes();
     release(&tickslock);
     ack_timer();
 }

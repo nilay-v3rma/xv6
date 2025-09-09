@@ -67,6 +67,11 @@ struct proc {
     struct file*    ofile[NOFILE];  // Open files
     struct inode*   cwd;            // Current directory
     char            name[16];       // Process name (debugging)
+    int             sleep_start;    // Tick count when process started sleeping
+    int             sleep_duration; // Tick count when process woke up
+    int             base_tickets;   // Base number of tickets for lottery scheduling
+    int             tickets;        // Current number of tickets for lottery scheduling
+    int             boost_ticks;     // Number of ticks the process has been boosted for
 };
 
 // Process memory is laid out contiguously, low addresses first:

@@ -6,6 +6,7 @@
 #include "arm.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "usr/pstat.h"
 
 //
 // Process initialization:
@@ -37,6 +38,13 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+
+#define RAND_MAX 0x7fffffff
+uint rseed = 0;
+
+uint rand() {
+    return rseed = (rseed * 1103515245 + 12345) & RAND_MAX;
+}
 
 void pinit(void)
 {
@@ -101,6 +109,12 @@ static struct proc* allocproc(void)
     // (if and when necessary). We need to skip that instruction and let
     // it use our implementation.
     p->context->lr = (uint)forkret+4;
+
+    p->base_tickets = 1; // Default number of tickets
+    p->tickets = 1;
+    p->boost_ticks = 0;
+    p->sleep_start = 0;
+    p->sleep_duration = 0;
 
     return p;
 }
@@ -197,6 +211,12 @@ int fork(void)
     np->sz = proc->sz;
     np->parent = proc;
     *np->tf = *proc->tf;
+
+    np->base_tickets = np->parent->base_tickets;
+    np->tickets = np->base_tickets;
+    np->boost_ticks = 0;
+    np->sleep_start = 0;
+    np->sleep_duration = 0;
 
     // Clear r0 so that fork returns 0 in the child.
     np->tf->r0 = 0;
@@ -318,6 +338,44 @@ int wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
+struct proc* hold_lottery(int total_tickets) {
+    if(total_tickets == 0) {
+        return 0;
+    }
+
+    int winning_ticket = rand() % total_tickets;
+    int current_ticket = 0;
+
+    struct proc *p;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if(p->state == RUNNABLE) {
+            current_ticket += p->tickets;
+            if(current_ticket > winning_ticket) {
+                return p;
+            }
+        }
+    }
+
+    return 0;
+}
+
+void boost_processes() {
+    struct proc *p;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if(p->state == SLEEPING) {
+            p->boost_ticks++;
+        } else if((p->state == RUNNABLE || p->state == RUNNING) && p->boost_ticks > 0) {
+            p->boost_ticks--;
+        }
+
+        if(p->boost_ticks > 0) {
+            p->tickets = p->base_tickets * 2;
+        } else {
+            p->tickets = p->base_tickets;
+        }
+    }
+}
+
 void scheduler(void)
 {
     struct proc *p;
@@ -329,19 +387,42 @@ void scheduler(void)
         // Loop over process table looking for process to run.
         acquire(&ptable.lock);
 
-        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-            if(p->state != RUNNABLE) {
-                continue;
-            }
+        // for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        //     if(p->state != RUNNABLE) {
+        //         continue;
+        //     }
 
+        //     // Switch to chosen process.  It is the process's job
+        //     // to release ptable.lock and then reacquire it
+        //     // before jumping back to us.
+        //     proc = p;
+        //     switchuvm(p);
+
+        //     p->state = RUNNING;
+
+        //     swtch(&cpu->scheduler, proc->context);
+        //     // Process is done running for now.
+        //     // It should have changed its p->state before coming back.
+        //     proc = 0;
+        // }
+
+        int total_tickets = 0;
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+            if(p->state == RUNNABLE) {
+                total_tickets += p->tickets;
+            }
+        }
+
+        p = hold_lottery(total_tickets);
+        if(p != 0) {
             // Switch to chosen process.  It is the process's job
             // to release ptable.lock and then reacquire it
             // before jumping back to us.
             proc = p;
+            cprintf("%d \n", proc->pid);
             switchuvm(p);
 
             p->state = RUNNING;
-
             swtch(&cpu->scheduler, proc->context);
             // Process is done running for now.
             // It should have changed its p->state before coming back.
@@ -375,7 +456,6 @@ void sched(void)
     if(int_enabled ()) {
         panic("sched interruptible");
     }
-
     intena = cpu->intena;
     swtch(&proc->context, cpu->scheduler);
     cpu->intena = intena;
@@ -455,8 +535,20 @@ static void wakeup1(void *chan)
     struct proc *p;
 
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-        if(p->state == SLEEPING && p->chan == chan) {
-            p->state = RUNNABLE;
+        // if(p->state == SLEEPING && p->chan == chan) {
+        //     p->state = RUNNABLE;
+        // }
+        if(chan == &ticks){
+            if(p->state == SLEEPING && ticks - p->sleep_start >= p->sleep_duration && p->sleep_duration > 0){
+                p->state = RUNNABLE;
+                p->sleep_duration = 0;
+                p->sleep_start = 0;
+            }
+        }
+        else {
+            if(p->state == SLEEPING && p->chan == chan) {
+                p->state = RUNNABLE;
+            }
         }
     }
 }
@@ -527,6 +619,61 @@ void procdump(void)
     }
 
     show_callstk("procdump: \n");
+}
+
+// Set the number of tickets for a process
+int settickets(int pid, int tickets)
+{
+    struct proc *p;
+    
+    if(tickets <= 0) {
+        return -1;
+    }
+    
+    acquire(&ptable.lock);
+    
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if(p->pid == pid) {
+            p->base_tickets = tickets;
+            p->tickets = tickets;
+            release(&ptable.lock);
+            return 0;
+        }
+    }
+    
+    release(&ptable.lock);
+    return -1;
+}
+
+// Get process information for lottery scheduling
+int getpinfo(struct pstat *ps)
+{
+    struct proc *p;
+    int i;
+    
+    if(ps == 0) {
+        return -1;
+    }
+    
+    acquire(&ptable.lock);
+    
+    for(i = 0, p = ptable.proc; p < &ptable.proc[NPROC]; p++, i++) {
+        if(p->state != UNUSED) {
+            ps->inuse[i] = 1;
+            ps->pid[i] = p->pid;
+            ps->base_tickets[i] = p->base_tickets;
+            // ps->[i] = ticks - (p->sleep_start + p->sleep_duration); // Use kernel ticks variable
+            ps->boostsleft[i] = p->boost_ticks;
+        } else {
+            ps->inuse[i] = 0;
+            ps->pid[i] = 0;
+            ps->base_tickets[i] = 0;
+            ps->boostsleft[i] = 0;
+        }
+    }
+    
+    release(&ptable.lock);
+    return 0;
 }
 
 

@@ -22,6 +22,9 @@ void irq_handler (struct trapframe *r)
     }
 
     pic_dispatch (r);
+    if (proc && proc->state == RUNNING) {
+        yield();
+    }
 }
 
 // trap routine

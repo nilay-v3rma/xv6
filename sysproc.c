@@ -5,6 +5,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "usr/pstat.h"
 
 int sys_fork(void)
 {
@@ -68,7 +69,8 @@ int sys_sleep(void)
     acquire(&tickslock);
 
     ticks0 = ticks;
-
+    proc->sleep_start = ticks;
+    proc->sleep_duration = n;
     while(ticks - ticks0 < n){
         if(proc->killed){
             release(&tickslock);
@@ -93,4 +95,31 @@ int sys_uptime(void)
     release(&tickslock);
 
     return xticks;
+}
+
+int sys_settickets(void)
+{
+    int pid;
+    int tickets;
+
+    if(argint(0, &pid) < 0 || argint(1, &tickets) < 0) {
+        return -1;
+    }
+
+    if(tickets <= 0) {
+        return -1;
+    }
+
+    return settickets(pid, tickets);
+}
+
+int sys_getpinfo(void)
+{
+    struct pstat* ps;
+
+    if(argptr(0, (void*)&ps, sizeof(*ps)) < 0) {
+        return -1;
+    }
+
+    return getpinfo(ps);
 }
