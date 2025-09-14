@@ -60,6 +60,11 @@ void            consoleinit(void);
 void            cprintf(char*, ...);
 void            consoleintr(int(*)(void));
 void            panic(char*) __attribute__((noreturn));
+void            init_usr_commands(void);
+void            trie_init(void);
+void            trie_insert(const char *cmd);
+struct TrieNode* trie_find(const char *prefix);
+void            autocomplete(uint *e, char *buf, uint w);
 
 // exec.c
 int             exec(char*, char**);
