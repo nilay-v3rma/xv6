@@ -21,6 +21,51 @@ static struct {
     int locking;
 } cons;
 
+#define MAX_COMMANDS 100
+#define MAX_COMMAND_LENGTH 32
+
+char commands[MAX_COMMANDS][MAX_COMMAND_LENGTH];
+int command_count = 0;
+
+void init_usr_commands(void)
+{
+    struct inode *dp;
+    struct dirent de;
+    int off;
+
+    command_count = 0;
+    trie_init(); // initialize trie
+
+    if((dp = namei("/")) == 0) {
+        return;
+    }
+
+    ilock(dp);
+
+    for(off = 0; off < dp->size && command_count < MAX_COMMANDS; off += sizeof(de)) {
+        if(readi(dp, (char*)&de, off, sizeof(de)) != sizeof(de)) {
+            break;
+        }
+
+        if(de.inum == 0) {
+            continue;
+        }
+
+        if(de.name[0] != '.' && de.name[1] != '\0') {
+            char *cmdname = de.name;
+            int cmdlen = strlen(cmdname);
+
+            if(cmdlen < MAX_COMMAND_LENGTH) {
+                safestrcpy(commands[command_count], cmdname, MAX_COMMAND_LENGTH);
+                trie_insert(cmdname); // insert into trie
+                command_count++;
+            }
+        }
+    }
+
+    iunlockput(dp);
+}
+
 static void printint (int xx, int base, int sign)
 {
     static char digits[] = "0123456789abcdef";
@@ -165,6 +210,124 @@ struct {
     uint e;  // Edit index
 } input;
 
+#define TRIE_CHILDREN 128  // ASCII
+
+typedef struct TrieNode {
+    struct TrieNode *children[TRIE_CHILDREN];
+    int is_end;
+    char command[MAX_COMMAND_LENGTH];
+} TrieNode;
+
+TrieNode trie_root;
+
+// Initialize the trie
+void trie_init() {
+    memset(&trie_root, 0, sizeof(trie_root));
+}
+
+// Insert a command into the trie
+void trie_insert(const char *cmd) {
+    TrieNode *node = &trie_root;
+    for (int i = 0; cmd[i]; i++) {
+        unsigned char idx = (unsigned char)cmd[i];
+        if (!node->children[idx]) {
+            node->children[idx] = (TrieNode*)alloc_page();
+            if (node->children[idx])
+                memset(node->children[idx], 0, sizeof(TrieNode));
+        }
+        node = node->children[idx];
+    }
+    node->is_end = 1;
+    safestrcpy(node->command, cmd, MAX_COMMAND_LENGTH);
+}
+
+// Helper to collect matches (for single match, can stop early)
+void trie_collect(TrieNode *node, char *result, int *found) {
+    if (!node || *found > 1) return;
+    if (node->is_end) {
+        safestrcpy(result, node->command, MAX_COMMAND_LENGTH);
+        (*found)++;
+    }
+    for (int i = 0; i < TRIE_CHILDREN; i++) {
+        if (node->children[i])
+            trie_collect(node->children[i], result, found);
+    }
+}
+
+// Find node for prefix
+TrieNode* trie_find(const char *prefix) {
+    TrieNode *node = &trie_root;
+    for (int i = 0; prefix[i]; i++) {
+        unsigned char idx = (unsigned char)prefix[i];
+        if (!node->children[idx])
+            return 0;
+        node = node->children[idx];
+    }
+    return node;
+}
+
+void autocomplete(uint *e, char *buf, uint w) {
+    int start = *e - 1;
+    while (start >= (int)w && buf[start % INPUT_BUF] != ' ' && buf[start % INPUT_BUF] != '\n') {
+        start--;
+    }
+    start++;
+
+    int len = *e - start;
+    if (len <= 0) {
+        return;
+    }
+
+    char prefix[MAX_COMMAND_LENGTH];
+    for (int i = 0; i < len && i < MAX_COMMAND_LENGTH-1; i++) {
+        prefix[i] = buf[(start + i) % INPUT_BUF];
+    }
+    prefix[len] = '\0';
+
+    TrieNode *node = trie_find(prefix);
+    if (!node){
+        return;
+    }
+
+    char match[MAX_COMMAND_LENGTH];
+    int found = 0;
+    trie_collect(node, match, &found);
+
+    if (found == 1) {
+        // Complete the command in the input buffer
+        int matchlen = strlen(match);
+        if (matchlen > len) {
+            for (int i = len; i < matchlen; i++) {
+                buf[(*e) % INPUT_BUF] = match[i];
+                consputc(match[i]);
+                (*e)++;
+            }
+        }
+    }
+    else if (found > 1) {
+        consputc('\n');
+        // Print all matches
+        for (int i = 0; i < command_count; i++) {
+            if (strncmp(commands[i], prefix, len) == 0) {
+                cprintf("%s\n", commands[i]);
+            }
+        }
+        // Reprint prompt and current input
+        cprintf("> ");
+        for (int i = w; i < *e; i++) {
+            consputc(buf[i % INPUT_BUF]);
+        }
+    }
+    else{
+        // No matches found
+        consputc('\n');
+        cprintf("$");
+        for (int i = w; i < *e; i++) {
+            consputc(buf[i % INPUT_BUF]);
+        }
+    }
+}
+
 #define C(x)  ((x)-'@')  // Control-x
 void consoleintr (int (*getc) (void))
 {
@@ -193,6 +356,9 @@ void consoleintr (int (*getc) (void))
                 consputc(BACKSPACE);
             }
 
+            break;
+        case '\t': // Tab
+            autocomplete(&input.e, input.buf, input.w);
             break;
 
         default:
@@ -290,5 +456,7 @@ void consoleinit (void)
     devsw[CONSOLE].read = consoleread;
 
     cons.locking = 1;
+
+    // init_commands();
 }
 

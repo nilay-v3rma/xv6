@@ -50,5 +50,6 @@ void kmain (void)
     sti ();
 
     userinit();					// first user process
+    init_usr_commands();            // initialize command trie
     scheduler();				// start running processes
 }
