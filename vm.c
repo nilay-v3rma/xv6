@@ -241,27 +241,33 @@ int allocuvm (pde_t *pgdir, uint oldsz, uint newsz)
 
     a = align_up(oldsz, PTE_SZ);
 
-    // for (; a < newsz; a += PTE_SZ) {
-    //     mem = alloc_page();
-
-    //     if (mem == 0) {
-    //         cprintf("allocuvm out of memory\n");
-    //         deallocuvm(pgdir, newsz, oldsz);
-    //         return 0;
-    //     }
-
-    //     memset(mem, 0, PTE_SZ);
-    //     mappages(pgdir, (char*) a, PTE_SZ, v2p(mem), AP_KU);
-    // }
-
-    //! Update the page table entry without allocating physical memory
     for (; a < newsz; a += PTE_SZ) {
-        if (mappages(pgdir, (char*)a, PTE_SZ, 0, AP_KU | PTE_D) < 0) { //? figure out how exactly PTE_D should work, 
-            cprintf("allocuvm: failed to map page\n");                 //? PTE_D is a flag to indicate the page is not allocated yet.
-            return 0;                                                  //? it will be updated when a page fault occurs.
+        mem = alloc_page();
+
+        if (mem == 0) {
+            cprintf("allocuvm out of memory\n");
+            deallocuvm(pgdir, newsz, oldsz);
+            return 0;
         }
+
+        memset(mem, 0, PTE_SZ);
+        mappages(pgdir, (char*) a, PTE_SZ, v2p(mem), AP_KU);
     }
-    // TODO: handle page faults gracefully -> trap.c should call a new function to actually allocate memory
+
+    return newsz;
+}
+
+// for demand paging, we do not allocate physical memory here
+// we just return the new size to the caller
+int allocuvm_demand(pde_t *pgdir, uint oldsz, uint newsz)
+{
+    if (newsz >= UADDR_SZ) {
+        return 0;
+    }
+
+    if (newsz < oldsz) {
+        return oldsz;
+    }
 
     return newsz;
 }
