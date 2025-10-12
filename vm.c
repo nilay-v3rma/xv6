@@ -224,6 +224,35 @@ int loaduvm (pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
     return 0;
 }
 
+int handle_page_fault (pde_t *pgdir, uint va, uint sz){
+    char *mem;
+    uint aligned_va = align_dn(va, PTE_SZ);
+    pte_t *pte;
+
+    //check if aligned_va is within the process's address space
+    if(aligned_va >= sz){
+        return -1;
+    }
+
+    // Check if page is already mapped
+    pte = walkpgdir(pgdir, (void*)aligned_va, 0);
+    if(pte != 0 && (*pte & PE_TYPES)) {
+        return 0; // Already mapped, nothing to do
+    }
+
+    if((mem = alloc_page()) == 0) {
+        return -1;
+    }
+
+    memset(mem, 0, PTE_SZ);
+    if(mappages(pgdir, (char *)aligned_va, PTE_SZ, v2p(mem), AP_KU) < 0) {
+        free_page(mem); // Don't leak memory
+        return -1;
+    }
+    flush_tlb();
+    return 0;
+}
+
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 int allocuvm (pde_t *pgdir, uint oldsz, uint newsz)
@@ -251,7 +280,9 @@ int allocuvm (pde_t *pgdir, uint oldsz, uint newsz)
         }
 
         memset(mem, 0, PTE_SZ);
-        mappages(pgdir, (char*) a, PTE_SZ, v2p(mem), AP_KU);
+        if((mappages(pgdir, (char*) a, PTE_SZ, v2p(mem), AP_KU)) < 0) {
+            return -1;
+        }
     }
 
     return newsz;
@@ -367,10 +398,13 @@ pde_t* copyuvm (pde_t *pgdir, uint sz)
     // copy the whole address space over (no COW)
     for (i = 0; i < sz; i += PTE_SZ) {
         if ((pte = walkpgdir(pgdir, (void *) i, 0)) == 0) {
-            panic("copyuvm: pte should exist");
+            // No PTE exists - this is a demand-allocated page that hasn't been accessed yet
+            // Skip it - the child will create the page on its own page fault
+            continue;
         }
 
         if (!(*pte & PE_TYPES)) {
+            // PTE exists but page not present - this should not happen
             panic("copyuvm: page not present");
         }
 

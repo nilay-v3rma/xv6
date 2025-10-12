@@ -43,4 +43,5 @@ allocuvm() {
 ```
 
 Changes so far
-1. implemented `allocuvm_demand` to handle process size growth from `grow_proc` in `proc.c`
+1. implemented `allocuvm_demand` to handle process size growth from `grow_proc` in `proc.c`.
+2. updated `dabort_handler` (trap.c) and `trap_dabort` (trap_asm.S) to handle page faults.
