@@ -1,47 +1,31 @@
-This branch will be updated to include the implementation of demand-paging.
+# xv6 with Demand Paging
 
-TODO:
-1. handle page fault
-2. implement fifo for physical page allocation
+This branch implements **demand paging** for xv6 on ARM. Physical memory is allocated only when pages are actually accessed, not when virtual memory is allocated.
 
-vm.c
-- the `alloc_page` function handles allocating physical memories to virtual pages
-- `mappages` handles mapping pte(s) to the allocated physical memory
+## How It Works
 
-approaches for demand paging
-1. Invalid PTE initially
+1. `sbrk()` calls use `allocuvm_demand()` - just updates process size, no physical allocation
+2. When process accesses unmapped page → page fault 
+3. `dabort_handler()` catches fault and calls `handle_page_fault()`
+4. Physical memory allocated and mapped to virtual address
+5. Process continues execution
 
-```
-allocuvm() {
-    for (each page) {
-        pte = walkpgdir(pgdir, va, 1);  // Create PTE
-        *pte = 0;  // Mark as invalid (no PE_TYPES bits set)
-    }
-}
+## Key Changes
 
-// On page fault:
-// 1. PTE exists but is invalid
-// 2. Allocate physical memory
-// 3. Update PTE to point to physical memory
-```
+- **`vm.c`**: Added `allocuvm_demand()` and `handle_page_fault()`
+- **`trap.c`**: Modified `dabort_handler()` to handle page faults  
+- **`trap_asm.S`**: Fixed PC adjustment for ARM data abort return
+- **`proc.c`**: Changed `growproc()` to use demand allocation
+- **`copyuvm()`**: Skip unallocated pages during fork
 
-2. Special Marking
+## Benefits
 
-```
-allocuvm() {
-    for (each page) {
-        mappages(pgdir, va, 0, AP_KU);  // Physical address = 0
-        // PTE has type bits set but physical address is 0
-    }
-}
+- Memory only allocated when actually used
+- Faster process creation (`sbrk()` is immediate)
+- Better memory utilization
 
-// On page fault:
-// 1. PTE exists and has type bits
-// 2. But physical address is 0 (invalid)
-// 3. Allocate physical memory  
-// 4. Update PTE with real physical address
-```
+## ARM-Specific Details
 
-Changes so far
-1. implemented `allocuvm_demand` to handle process size growth from `grow_proc` in `proc.c`.
-2. updated `dabort_handler` (trap.c) and `trap_dabort` (trap_asm.S) to handle page faults.
+- Detects translation faults using FSR codes 0x5 and 0x7
+- Critical PC adjustment in `trap_dabort` for instruction retry
+- Proper TLB flushing after new page mappings
