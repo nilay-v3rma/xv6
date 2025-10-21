@@ -201,6 +201,7 @@ void            micro_delay(int us);
 void            uart_enable_rx();
 
 // vm.c
+int             handle_page_fault(pde_t *pgdir, uint va, uint sz);
 int             allocuvm(pde_t*, uint, uint);
 int             deallocuvm(pde_t*, uint, uint);
 void            freevm(pde_t*);
@@ -214,4 +215,5 @@ void*           kpt_alloc(void);
 void            init_vmm (void);
 void            kpt_freerange (uint32 low, uint32 hi);
 void            paging_init (uint phy_low, uint phy_hi);
+int             allocuvm_demand(pde_t *pgdir, uint oldsz, uint newsz);
 #endif

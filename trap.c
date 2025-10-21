@@ -53,6 +53,14 @@ void dabort_handler (struct trapframe *r)
 
     // read the fault address register
     asm("MRC p15, 0, %[r], c6, c0, 0": [r]"=r" (fa)::);
+
+    // Check if this is a translation fault (missing page) for demand paging
+    // Translation fault status: 0x5 (section), 0x7 (page)
+    if(proc && fa < proc->sz) {
+        if(handle_page_fault(proc->pgdir, fa, proc->sz) == 0) {
+            return;
+        }
+    }
     
     cprintf ("data abort: instruction 0x%x, fault addr 0x%x, reason 0x%x \n",
              r->pc, fa, dfs);

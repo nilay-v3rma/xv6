@@ -131,7 +131,7 @@ trap_dabort:
     # call traps (trapframe *fp)
     MOV     r0, r13                 // save trapframe as the first parameter
     BL      dabort_handler
-    B       .
+    B       trapret
 
 trap_na:
     STMFD   r13!, {r0-r12, r14} // should never happen, hardware error

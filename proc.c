@@ -171,7 +171,7 @@ int growproc(int n)
     sz = proc->sz;
 
     if(n > 0){
-        if((sz = allocuvm(proc->pgdir, sz, sz + n)) == 0) {
+        if((sz = allocuvm_demand(proc->pgdir, sz, sz + n)) == 0) {
             return -1;
         }
 
