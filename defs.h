@@ -146,6 +146,11 @@ int             holding(struct spinlock*);
 void            initlock(struct spinlock*, char*);
 void            release(struct spinlock*);
 
+// barrier.c
+void            barrier_init_lock(void);
+int             barrier_init(uint);
+int             barrier_check(void);
+
 // string.c
 int             memcmp(const void*, const void*, uint);
 void*           memmove(void*, const void*, uint);

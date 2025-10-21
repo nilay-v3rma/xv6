@@ -44,6 +44,7 @@ void kmain (void)
     fileinit ();				// file table
     iinit ();					// inode cache
     ideinit ();					// ide (memory block device)
+    barrier_init_lock();		// barrier synchronization
     timer_init (HZ);			// the timer (ticker)
 
 

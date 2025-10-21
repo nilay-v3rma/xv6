@@ -1,6 +1,6 @@
 This branch will be updated for the following tasks.
 
-## 1. Barriers as synchronization primitives
+## 1. Barriers as synchronization primitives -> Implemented
 In this part, we will implement barriers.
 
 A barrier works as follows. The barrier is initialized with a count N, using the system call barrier_init(N). Next, processes that wish to wait at the barrier invoke the system call barrier_check(). The first N − 1 calls to barrier_check must block, and the N-th call to this function must unblock all the processes that were waiting at the barrier. That is, all the N processes that wish to synchronize at the barrier must cross the barrier only after all N of them have arrived. You must implement the core logic for these system calls in barrier.c.

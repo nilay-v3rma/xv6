@@ -94,3 +94,19 @@ int sys_uptime(void)
 
     return xticks;
 }
+
+int sys_barrier_init(void)
+{
+    int n;
+    
+    if(argint(0, &n) < 0) {
+        return -1;
+    }
+    
+    return barrier_init(n);
+}
+
+int sys_barrier_check(void)
+{
+    return barrier_check();
+}

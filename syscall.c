@@ -114,6 +114,8 @@ extern int sys_unlink(void);
 extern int sys_wait(void);
 extern int sys_write(void);
 extern int sys_uptime(void);
+extern int sys_barrier_init(void);
+extern int sys_barrier_check(void);
 
 static int (*syscalls[])(void) = {
         [SYS_fork]    sys_fork,
@@ -137,6 +139,8 @@ static int (*syscalls[])(void) = {
         [SYS_link]    sys_link,
         [SYS_mkdir]   sys_mkdir,
         [SYS_close]   sys_close,
+        [SYS_barrier_init]  sys_barrier_init,
+        [SYS_barrier_check] sys_barrier_check,
 };
 
 void syscall(void)

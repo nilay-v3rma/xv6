@@ -11,6 +11,7 @@ OBJS = \
 	\
 	arm.o\
 	asm.o\
+	barrier.o\
 	bio.o\
 	buddy.o\
 	console.o\

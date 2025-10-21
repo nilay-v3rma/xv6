@@ -22,6 +22,7 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
+	_t_barrier\
 
 
 all: $(FS_IMAGE)

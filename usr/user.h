@@ -23,6 +23,38 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 
+int thread_create(uint* thread, void* (*start_routine)(void*), void* arg);
+int thread_join(uint thread);
+int thread_exit();
+
+int waitpid(int);
+
+int barrier_init(int);
+int barrier_check(void);
+
+void sleepChan(int);
+int getChannel(void);
+void sigChan(int);
+void sigOneChan(int);
+
+struct lock{
+    int lockvar;
+    int isInitiated;
+};
+
+struct condvar{
+    int var;
+    int isInitiated;
+};  
+
+struct semaphore{
+    int ctr;
+    struct lock l;
+    struct condvar cv;
+    int isInitiated;
+};
+
+
 // ulib.c
 int stat(char*, struct stat*);
 char* strcpy(char*, char*);
@@ -36,3 +68,13 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+
+void initiateLock(struct lock* l);
+void acquireLock(struct lock* l);
+void releaseLock(struct lock* l);
+void initiateCondVar(struct condvar* cv);
+void condWait(struct condvar* cv, struct lock* l);
+void broadcast(struct condvar* cv);
+void semInit(struct semaphore* s, int initVal);
+void semUp(struct semaphore* s);
+void semDown(struct semaphore* s);  
