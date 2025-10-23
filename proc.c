@@ -529,4 +529,210 @@ void procdump(void)
     show_callstk("procdump: \n");
 }
 
+int thread_create(uint* thread, void* (*func)(void*), void* arg){
+    int i, pid;
+    struct proc *np;
+    uint sp, ustack[2];
 
+    // Allocate process.
+    if((np = allocproc()) == 0) {
+        return -1;
+    }
+
+    // Share page directory - threads share memory
+    np->pgdir = proc->pgdir;
+    
+    // Allocate a new page for thread's user stack
+    if((np->thread_stack = alloc_page()) == 0){
+        free_page(np->kstack);
+        np->kstack = 0;
+        np->state = UNUSED;
+        return -1;
+    }
+
+    // Map the new stack page at the current process size
+    if(mappages(np->pgdir, (void *)proc->sz, PTE_SZ, V2P(np->thread_stack), AP_KU) < 0){
+        free_page(np->kstack);
+        free_page(np->thread_stack);
+        np->kstack = 0;
+        np->thread_stack = 0;
+        np->state = UNUSED;
+        return -1;
+    }
+
+    // Update process size to account for new stack
+    proc->sz += PTE_SZ;
+    np->sz = proc->sz;
+
+    // Set thread metadata
+    np->is_thread = 1;
+    np->main_thread = proc->is_thread ? proc->main_thread : proc;
+    np->parent = proc;
+
+    // Copy trapframe from current process
+    *np->tf = *proc->tf;
+
+    // Set up thread to start at the function pointer
+    np->tf->pc = (uint)func;
+    
+    // Set up stack pointer at top of the new stack
+    // Stack grows downward, so start at the top
+    sp = proc->sz;
+    
+    // Push argument onto stack
+    // ARM calling convention: first argument in r0
+    np->tf->r0 = (uint)arg;
+    
+    // Push a dummy return address (0) onto stack
+    // This is what the function will return to when it's done
+    sp -= 4;
+    ustack[0] = 0;
+    if(copyout(np->pgdir, sp, ustack, 4) < 0){
+        free_page(np->kstack);
+        free_page(np->thread_stack);
+        np->kstack = 0;
+        np->thread_stack = 0;
+        np->state = UNUSED;
+        return -1;
+    }
+    
+    // Set stack pointer
+    np->tf->sp_usr = sp;
+
+    // Copy file descriptors
+    for(i = 0; i < NOFILE; i++) {
+        if(proc->ofile[i]) {
+            np->ofile[i] = filedup(proc->ofile[i]);
+        }
+    }
+    
+    // Copy current directory
+    np->cwd = idup(proc->cwd);
+
+    // Get the pid to return
+    pid = np->pid;
+    
+    // Copy thread ID to user memory
+    if(copyout(proc->pgdir, (uint)thread, &pid, sizeof(pid)) < 0){
+        // Clean up if we can't write back the thread ID
+        free_page(np->kstack);
+        free_page(np->thread_stack);
+        np->kstack = 0;
+        np->thread_stack = 0;
+        np->state = UNUSED;
+        return -1;
+    }
+    
+    // Set process name for debugging
+    safestrcpy(np->name, proc->name, sizeof(proc->name));
+    
+    // Make thread runnable
+    np->state = RUNNABLE;
+    
+    return pid;
+}
+
+void thread_exit(void){
+    struct proc *p = proc;
+    int fd;
+    
+    // If this is a main thread (not a spawned thread), do nothing (no-op)
+    if(!p->is_thread){
+        return;
+    }
+    
+    // Close all open files
+    for(fd = 0; fd < NOFILE; fd++){
+        if(p->ofile[fd]){
+            fileclose(p->ofile[fd]);
+            p->ofile[fd] = 0;
+        }
+    }
+
+    iput(p->cwd);
+    p->cwd = 0;
+
+    acquire(&ptable.lock);
+
+    // Wake up parent process (so it can join this thread)
+    wakeup1(p->parent);
+
+    // Mark this thread as ZOMBIE
+    p->state = ZOMBIE;
+    sched();
+
+    panic("zombie thread exit");
+}
+
+int thread_join(uint thread){
+    struct proc *p;
+    int found;
+    struct proc *main_thread;
+
+    // Determine the main thread
+    main_thread = proc->is_thread ? proc->main_thread : proc;
+
+    acquire(&ptable.lock);
+
+    for(;;){
+        // Scan through table looking for the thread with matching pid
+        found = 0;
+
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+            // Check if this is the thread we're looking for
+            if(p->pid != thread) {
+                continue;
+            }
+
+            // Verify it's actually a thread
+            if(!p->is_thread) {
+                release(&ptable.lock);
+                return -1;
+            }
+
+            // Verify it belongs to the same process (same main thread)
+            if(p->main_thread != main_thread) {
+                release(&ptable.lock);
+                return -1;
+            }
+
+            found = 1;
+
+            if(p->state == ZOMBIE){
+                // Found the zombie thread - clean it up
+                int pid = p->pid;
+                
+                // Free kernel stack
+                free_page(p->kstack);
+                p->kstack = 0;
+                
+                // Free thread's user stack (DON'T free pgdir - it's shared!)
+                if(p->thread_stack) {
+                    free_page(p->thread_stack);
+                    p->thread_stack = 0;
+                }
+                
+                // Reset proc structure fields
+                p->state = UNUSED;
+                p->pid = 0;
+                p->parent = 0;
+                p->name[0] = 0;
+                p->killed = 0;
+                p->is_thread = 0;
+                p->main_thread = 0;
+                
+                release(&ptable.lock);
+                return pid;
+            }
+        }
+
+        // Thread not found
+        if(!found || proc->killed){
+            release(&ptable.lock);
+            return -1;
+        }
+
+        // Wait for thread to exit
+        sleep(proc, &ptable.lock);
+    }
+}

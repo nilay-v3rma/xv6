@@ -136,6 +136,9 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+int             thread_create(uint*, void* (*)(void*), void*);
+void            thread_exit(void);
+int             thread_join(uint);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -205,6 +208,7 @@ void            switchuvm(struct proc*);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 void*           kpt_alloc(void);
+int             mappages (pde_t *pgdir, void *va, uint size, uint pa, int ap);
 void            init_vmm (void);
 void            kpt_freerange (uint32 low, uint32 hi);
 void            paging_init (uint phy_low, uint phy_hi);
