@@ -116,6 +116,14 @@ extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_barrier_init(void);
 extern int sys_barrier_check(void);
+extern int sys_thread_create(void);
+extern int sys_thread_exit(void);
+extern int sys_thread_join(void);
+extern int sys_waitpid(void);
+extern int sys_sleepChan(void);
+extern int sys_getChannel(void);
+extern int sys_sigChan(void);
+extern int sys_sigOneChan(void);
 
 static int (*syscalls[])(void) = {
         [SYS_fork]    sys_fork,
@@ -141,6 +149,14 @@ static int (*syscalls[])(void) = {
         [SYS_close]   sys_close,
         [SYS_barrier_init]  sys_barrier_init,
         [SYS_barrier_check] sys_barrier_check,
+        [SYS_thread_create] sys_thread_create,
+        [SYS_thread_exit]   sys_thread_exit,
+        [SYS_thread_join]   sys_thread_join,
+        [SYS_waitpid]       sys_waitpid,
+        [SYS_sleepChan]     sys_sleepChan,
+        [SYS_getChannel]    sys_getChannel,
+        [SYS_sigChan]       sys_sigChan,
+        [SYS_sigOneChan]    sys_sigOneChan,
 };
 
 void syscall(void)

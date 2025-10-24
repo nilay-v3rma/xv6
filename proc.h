@@ -69,7 +69,8 @@ struct proc {
     char            name[16];       // Process name (debugging)
     struct proc*    main_thread;   // Main thread of the process
     int             is_thread;      // Flag indicating if this proc is a thread
-    void*           thread_stack;    // Base address of the thread's stack
+    void*           thread_stack;    // Base address of the thread's stack (physical)
+    uint            thread_stack_va; // Virtual address where thread stack is mapped
 };
 
 // Process memory is laid out contiguously, low addresses first:

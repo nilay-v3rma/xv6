@@ -68,11 +68,19 @@ static struct proc* allocproc(void)
     found:
     p->state = EMBRYO;
     p->pid = nextpid++;
+    
+    // Initialize thread-related fields
+    p->is_thread = 0;
+    p->main_thread = 0;
+    p->thread_stack = 0;
+    p->thread_stack_va = 0;
+    
     release(&ptable.lock);
 
     // Allocate kernel stack.
     if((p->kstack = alloc_page ()) == 0){
         p->state = UNUSED;
+        p->kstack = 0;  // Clear the pointer
         return 0;
     }
 
@@ -181,6 +189,11 @@ int fork(void)
     int i, pid;
     struct proc *np;
 
+    // threads cannot fork new processes
+    if(proc->is_thread){
+        return -1; 
+    }
+
     // Allocate process.
     if((np = allocproc()) == 0) {
         return -1;
@@ -228,6 +241,35 @@ void exit(void)
         panic("init exiting");
     }
 
+    // spawned threads should use thread_exit -_-
+    if(proc->is_thread){
+        thread_exit();
+    }
+
+    // This is a main thread - wait for all spawned threads to exit first
+    acquire(&ptable.lock);
+    
+    // Keep checking if any threads belonging to this process are still running
+    for(;;) {
+        int has_running_threads = 0;
+        
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+            if(p->is_thread && p->main_thread == proc && p->state != ZOMBIE && p->state != UNUSED){
+                has_running_threads = 1;
+                break;
+            }
+        }
+        
+        if(!has_running_threads) {
+            break; // All threads have exited
+        }
+        
+        // Wait for threads to exit
+        sleep(proc, &ptable.lock);
+    }
+    
+    release(&ptable.lock);
+
     // Close all open files.
     for(fd = 0; fd < NOFILE; fd++){
         if(proc->ofile[fd]){
@@ -246,7 +288,7 @@ void exit(void)
 
     // Pass abandoned children to init.
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-        if(p->parent == proc){
+        if(p->parent == proc && !p->is_thread){  // Only handle child processes, not threads
             p->parent = initproc;
 
             if(p->state == ZOMBIE) {
@@ -279,6 +321,9 @@ int wait(void)
             if(p->parent != proc) {
                 continue;
             }
+            if(p->is_thread){
+                continue;
+            }
 
             havekids = 1;
 
@@ -307,6 +352,60 @@ int wait(void)
 
         // Wait for children to exit.  (See wakeup1 call in proc_exit.)
         sleep(proc, &ptable.lock);  //DOC: wait-sleep
+    }
+}
+
+// Wait for a specific child process to exit and return its pid.
+// Return -1 if the process is not a child or doesn't exist.
+int waitpid(int target_pid)
+{
+    struct proc *p;
+    int found;
+
+    acquire(&ptable.lock);
+
+    for(;;){
+        // Scan through table looking for specific zombie child.
+        found = 0;
+
+        for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+            if(p->pid != target_pid) {
+                continue;
+            }
+            
+            // Check if it's actually our child process (not thread)
+            if(p->parent != proc || p->is_thread) {
+                release(&ptable.lock);
+                return -1;
+            }
+
+            found = 1;
+
+            if(p->state == ZOMBIE){
+                // Found the specific child.
+                int pid = p->pid;
+                free_page(p->kstack);
+                p->kstack = 0;
+                freevm(p->pgdir);
+                p->state = UNUSED;
+                p->pid = 0;
+                p->parent = 0;
+                p->name[0] = 0;
+                p->killed = 0;
+                release(&ptable.lock);
+
+                return pid;
+            }
+        }
+
+        // Child process not found or not our child
+        if(!found || proc->killed){
+            release(&ptable.lock);
+            return -1;
+        }
+
+        // Wait for the specific child to exit.
+        sleep(proc, &ptable.lock);
     }
 }
 
@@ -529,10 +628,11 @@ void procdump(void)
     show_callstk("procdump: \n");
 }
 
+// Thread creation function, referenced from fork()
 int thread_create(uint* thread, void* (*func)(void*), void* arg){
     int i, pid;
     struct proc *np;
-    uint sp, ustack[2];
+    uint sp, ustack[1];
 
     // Allocate process.
     if((np = allocproc()) == 0) {
@@ -560,6 +660,9 @@ int thread_create(uint* thread, void* (*func)(void*), void* arg){
         return -1;
     }
 
+    // Store the virtual address where the stack is mapped
+    np->thread_stack_va = proc->sz;
+
     // Update process size to account for new stack
     proc->sz += PTE_SZ;
     np->sz = proc->sz;
@@ -576,15 +679,12 @@ int thread_create(uint* thread, void* (*func)(void*), void* arg){
     np->tf->pc = (uint)func;
     
     // Set up stack pointer at top of the new stack
-    // Stack grows downward, so start at the top
     sp = proc->sz;
     
-    // Push argument onto stack
     // ARM calling convention: first argument in r0
     np->tf->r0 = (uint)arg;
     
     // Push a dummy return address (0) onto stack
-    // This is what the function will return to when it's done
     sp -= 4;
     ustack[0] = 0;
     if(copyout(np->pgdir, sp, ustack, 4) < 0){
@@ -614,7 +714,6 @@ int thread_create(uint* thread, void* (*func)(void*), void* arg){
     
     // Copy thread ID to user memory
     if(copyout(proc->pgdir, (uint)thread, &pid, sizeof(pid)) < 0){
-        // Clean up if we can't write back the thread ID
         free_page(np->kstack);
         free_page(np->thread_stack);
         np->kstack = 0;
@@ -703,13 +802,23 @@ int thread_join(uint thread){
                 int pid = p->pid;
                 
                 // Free kernel stack
-                free_page(p->kstack);
-                p->kstack = 0;
+                if(p->kstack) {
+                    free_page(p->kstack);
+                    p->kstack = 0;
+                }
                 
                 // Free thread's user stack (DON'T free pgdir - it's shared!)
                 if(p->thread_stack) {
+                    
+                    // First, unmap the virtual address to prevent double free in freevm()
+                    if(p->thread_stack_va) {
+                        clearpteu_complete(p->main_thread->pgdir, (char*)p->thread_stack_va);
+                    }
+                    
+                    // Then free the physical page
                     free_page(p->thread_stack);
                     p->thread_stack = 0;
+                    p->thread_stack_va = 0;
                 }
                 
                 // Reset proc structure fields

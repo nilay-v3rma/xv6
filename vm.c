@@ -334,6 +334,19 @@ void clearpteu (pde_t *pgdir, char *uva)
     *pte = (*pte & ~(0x03 << 4)) | AP_KO << 4;
 }
 
+// Clear a page table entry completely (for unmapping)
+void clearpteu_complete (pde_t *pgdir, char *uva)
+{
+    pte_t *pte;
+
+    pte = walkpgdir(pgdir, uva, 0);
+    if (pte == 0) {
+        return; // Page table entry doesn't exist
+    }
+
+    *pte = 0;  // Completely clear the page table entry
+}
+
 // Given a parent process's page table, create a copy
 // of it for a child.
 pde_t* copyuvm (pde_t *pgdir, uint sz)

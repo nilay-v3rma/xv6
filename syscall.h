@@ -22,3 +22,11 @@
 #define SYS_close  21
 #define SYS_barrier_init  22
 #define SYS_barrier_check 23
+#define SYS_thread_create 24
+#define SYS_thread_exit   25
+#define SYS_thread_join   26
+#define SYS_waitpid       27
+#define SYS_sleepChan     28
+#define SYS_getChannel    29
+#define SYS_sigChan       30
+#define SYS_sigOneChan    31
