@@ -130,17 +130,36 @@ memmove(void *vdst, void *vsrc, int n)
     return vdst;
 }
 
+static inline int arm_xchg(volatile int *addr, int newval) {
+    int old;
+    // Atomic swap using ARM SWP instruction
+    __asm__ __volatile__(
+        "swp %0, %2, [%1]"
+        : "=&r"(old)
+        : "r"(addr), "r"(newval)
+        : "memory");
+    return old;
+}
 
 void initiateLock(struct lock* l) {
-
+    if(!l) return;
+    l->isInitiated = 1;
+    l->lockvar = 0; // initiate lock
 }
 
 void acquireLock(struct lock* l) {
-
+    if(!l || !l->isInitiated) return;
+    // spin until we atomically set lockvar from 0 to 1
+    // arm_xchg returns the previous value
+    while(arm_xchg(&l->lockvar, 1) != 0) {
+        // busy-wait; optional backoff could be added if needed
+    }
 }
 
 void releaseLock(struct lock* l) {
-
+    if(!l || !l->isInitiated) return;
+    // atomically set lockvar back to 0
+    arm_xchg(&l->lockvar, 0);
 }
 
 void initiateCondVar(struct condvar* cv) {

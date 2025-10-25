@@ -24,6 +24,7 @@ UPROGS=\
 	_zombie\
 	_t_barrier\
 	_t_threads\
+	_t_lock\
 
 
 all: $(FS_IMAGE)
