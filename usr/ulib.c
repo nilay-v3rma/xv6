@@ -153,6 +153,7 @@ void acquireLock(struct lock* l) {
     // arm_xchg returns the previous value
     while(arm_xchg(&l->lockvar, 1) != 0) {
         // busy-wait; optional backoff could be added if needed
+        sleep(1); // Yield CPU to avoid tight spinning
     }
 }
 
