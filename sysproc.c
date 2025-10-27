@@ -5,6 +5,13 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "spinlock.h"
+
+// External declarations
+extern struct {
+    struct spinlock lock;
+    struct proc proc[NPROC];
+} ptable;
 
 int sys_fork(void)
 {
@@ -163,19 +170,73 @@ int sys_waitpid(void)
   return waitpid(pid);
 }
 
+// Global channel counter to generate unique channels
+static int nextchannel = 1;
+
 int sys_sleepChan(void) {
-  return -1;
+  int channel;
+  
+  if (argint(0, &channel) < 0)
+    return -1;
+  
+  // Validate channel (should be positive)
+  if (channel <= 0)
+    return -1;
+  
+  // Sleep on the channel using the global ptable lock
+  acquire(&ptable.lock);
+  sleep((void*)channel, &ptable.lock);
+  release(&ptable.lock);
+  
+  return 0;
 }
 
 int sys_getChannel(void) {
-  return -1;
+  // Return a unique channel ID that won't clash with existing ones
+  int channel;
+  acquire(&ptable.lock);
+  channel = nextchannel++;
+  release(&ptable.lock);
+  return channel;
 }
 
 int sys_sigChan(void) {
-  return -1;
+  int channel;
+  
+  if (argint(0, &channel) < 0)
+    return -1;
+  
+  // Validate channel (should be positive)
+  if (channel <= 0)
+    return -1;
+  
+  // Wake up all processes sleeping on this channel
+  wakeup((void*)channel);
+  
+  return 0;
 }
 
 int sys_sigOneChan(void) {
-  return -1;
+  int channel;
+  struct proc *p;
+  
+  if (argint(0, &channel) < 0)
+    return -1;
+  
+  // Validate channel (should be positive)  
+  if (channel <= 0)
+    return -1;
+  
+  // Wake up exactly one process sleeping on this channel
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if(p->state == SLEEPING && p->chan == (void*)channel) {
+      p->state = RUNNABLE;
+      break; // Only wake up one process
+    }
+  }
+  release(&ptable.lock);
+  
+  return 0;
 }
 

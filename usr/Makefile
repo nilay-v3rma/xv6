@@ -25,7 +25,9 @@ UPROGS=\
 	_t_barrier\
 	_t_threads\
 	_t_lock\
-
+	_t_sleepwake\
+	_t_l_cv1\
+	_t_l_cv2\
 
 all: $(FS_IMAGE)
 

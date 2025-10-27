@@ -163,19 +163,31 @@ void releaseLock(struct lock* l) {
 }
 
 void initiateCondVar(struct condvar* cv) {
-
+    if(!cv) return;
+    // Allocate a channel through getChannel and set cv->var to the channel's value
+    cv->var = getChannel();
+    cv->isInitiated = 1;
 }
 
 void condWait(struct condvar* cv, struct lock* l) {
-
+    if(!cv || !cv->isInitiated || !l || !l->isInitiated) return;
+    
+    // Release the lock, sleep on the channel, and re-acquire the lock after waking up
+    releaseLock(l);
+    sleepChan(cv->var);
+    acquireLock(l);
 }
 
 void broadcast(struct condvar* cv) {
-
+    if(!cv || !cv->isInitiated) return;
+    // Wake up all threads sleeping on the CV's channel
+    sigChan(cv->var);
 }
 
 void signal(struct condvar* cv) {
-
+    if(!cv || !cv->isInitiated) return;
+    // Wake up one specific thread sleeping on the CV's channel
+    sigOneChan(cv->var);
 }
 
 void semInit(struct semaphore* s, int initVal) {
