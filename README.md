@@ -3,16 +3,16 @@ This branch contains the base xv6 codebase with a modified scheduler from round 
 ### Implementation Details
 
 - **Boosting Mechanism**:  
-  To prevent starvation and improve responsiveness, a boosting mechanism is implemented. When a process voluntarily gives up cpu (like by going to sleep state or etc) its tickets are doubled (from the base tickets) for the number of ticks it was sleeping or not runnable.
+  To prevent starvation and improve responsiveness, a boosting mechanism is implemented. When a process voluntarily gives up cpu (like by going to sleep state, calling `yield` or etc) its tickets are doubled (from the base tickets) for the number of ticks it was sleeping or not runnable (as a reward to establish fairness).
 
 - **Ticket Assignment**:  
-  - Each process is initialized with a default number of tickets (1).
+  - Each process is initialized with a default number of tickets (currently 1, should be updated to distribute tickets based on some information about the process?).
   - System call `settickets(pid, n)` is provided to allow dynamic adjustment of ticket counts by user programs or the kernel.
-  - When a parent process forks and creates a child process, the child process inherits the parent's base tickets and no boost ticks.
+  - When a parent process forks and creates a child process, the child process inherits the parent's base tickets and no boost ticks (trying to avoid nepotism :| ).
 
 - **Random Number Generation**:  
-  The scheduler uses a pseudo-random number generator to select the winning ticket on each scheduling decision.
-
+  The scheduler uses linear congruential generator (pseudo-random number generator) to select the winning ticket on each scheduling decision.
+  
 - **Code Changes**:  
   - Modifications are primarily in `proc.c` and `proc.h` to implement the lottery logic and ticket management.
   - Additional helper functions for ticket boosting and random selection are added.
